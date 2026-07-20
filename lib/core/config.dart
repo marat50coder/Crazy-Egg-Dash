@@ -5,10 +5,8 @@ class AppConfig {
   static const String appName = 'Crazy Egg Dash';
   static const String bundleId = 'com.crazyeggdash.crazyeggdashgame';
 
-  /// Privacy Policy URL. Intentionally left empty for now — when a real URL is
-  /// provided the WebView loads it; while empty, a bundled offline page shows.
-  static const String privacyPolicyUrl = '';
+  static const String privacyPolicyUrl =
+      'https://crazyeggdash.com/privacy-policy.html';
 
-  /// Support URL. Same behaviour as [privacyPolicyUrl].
-  static const String supportUrl = '';
+  static const String supportUrl = 'https://crazyeggdash.com/support.html';
 }
