@@ -1,0 +1,179 @@
+name: crazy_egg_dash
+description: "A new Flutter project."
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+# Both the version and the builder number may be overridden in flutter
+# build by specifying --build-name and --build-number, respectively.
+# In Android, build-name is used as versionName while build-number used as versionCode.
+# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
+# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
+# Read more about iOS versioning at
+# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+# In Windows, build-name is used as the major, minor, and patch parts
+# of the product and file versions while build-number is used as the build suffix.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.8
+  webview_flutter: ^4.14.1
+  shared_preferences: ^2.5.5
+  provider: ^6.1.5+1
+  audioplayers: ^6.8.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# App launcher icon configuration.
+# The icon is stretched full-bleed (no empty margins): iOS/legacy use the full
+# square image, and the Android adaptive icon uses the image as a full-cover
+# background with a transparent foreground.
+# NOTE: The Android adaptive launcher icon and the Android 12+ splash are
+# configured by hand in android/app/src/main/res (mipmap-anydpi-v26/ic_launcher.xml,
+# drawable-anydpi-v26/ic_splash_logo.xml, values-v31) so the art stays fully
+# visible under every launcher mask. Only iOS + legacy Android icons are
+# generated here. Do NOT re-add adaptive_icon_* keys or the manual XML will be
+# overwritten.
+flutter_launcher_icons:
+  image_path: "assets/icon.png"
+  remove_alpha_ios: true
+  android: true
+  ios: true
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  assets:
+    # Chickens (species: standing / running / jumping variants)
+    - assets/chicken1.webp
+    - assets/chicken2.webp
+    - assets/chicken3.webp
+    - assets/chicken4.webp
+    - assets/chicken_run1.webp
+    - assets/chicken_run2.webp
+    - assets/chicken_run3.webp
+    - assets/chicken_run4.webp
+    - assets/chicken_jump1.webp
+    - assets/chicken_jump2.webp
+    - assets/chicken_jump3.webp
+    - assets/chicken_jump4.webp
+    # Eggs
+    - assets/egg_asset.webp
+    - assets/eggs_asset.webp
+    - assets/golden_egg_asset.webp
+    - assets/speckled egg_assets.webp
+    - assets/broken_eggs.webp
+    - assets/1kg_egg_asset.webp
+    - assets/3kg_egg_asset.webp
+    - assets/5kg_egg_asset.webp
+    # Backgrounds (scroll during the run)
+    - assets/bg1.webp
+    - assets/bg2.webp
+    - assets/bg3.webp
+    - assets/bg4.webp
+    - assets/bg5.webp
+    - assets/cloud_asset.webp
+    # Obstacles / platforms / props
+    - assets/rock_asset.webp
+    - assets/rock_platform_asset.webp
+    - assets/platform_asset.webp
+    - assets/floating_wooden_platform_asset.webp
+    - assets/hollow_fallen_log_asset.webp
+    - assets/bush_asset.webp
+    - assets/tree_asset.webp
+    - assets/tree_stump_asset.webp
+    - assets/finish_asset.webp
+    - assets/arrow_asset.webp
+    # Currencies / collectibles
+    - assets/coin_asset.webp
+    - assets/coin_feather_asset.webp
+    - assets/crystal_asset.webp
+    - assets/blue_crystal_asset.webp
+    - assets/scales_asset.webp
+    # Menu / UI background
+    - assets/Bg_Menu.webp
+    # Power-up crate
+    - assets/magic_box.webp
+    # Loading screens
+    - assets/Horizontal_Loading.webp
+    - assets/Vertical_Loading.webp
+    # App icon source
+    - assets/icon.png
+    # Audio (custom music tracks + generated SFX)
+    - assets/audio/menumusic.mp3
+    - assets/audio/gamemusic.mp3
+    - assets/audio/sfx_jump.wav
+    - assets/audio/sfx_coin.wav
+    - assets/audio/sfx_egg.wav
+    - assets/audio/sfx_hatch.wav
+    - assets/audio/sfx_hit.wav
+    - assets/audio/sfx_gameover.wav
+    - assets/audio/sfx_button.wav
+    - assets/audio/sfx_reward.wav
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/to/resolution-aware-images
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/to/asset-from-package
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package

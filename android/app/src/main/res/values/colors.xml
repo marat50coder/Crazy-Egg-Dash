@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Deep blue matching the corners of the app art (icon.png). Used as the
+         adaptive-icon background and the Android 12+ splash background so the
+         icon and the splash look identical on the home screen. -->
+    <color name="launch_bg">#004ED8</color>
+</resources>
