@@ -76,5 +76,29 @@
 	<false/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+		<string>tel</string>
+		<string>mailto</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Your device identifier helps us understand which Crazy Egg Dash campaigns bring players to the game.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Crazy Egg Dash uses the camera when you choose to add a photo to your profile.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Crazy Egg Dash lets you choose images to personalize your profile.</string>
 </dict>
 </plist>
