@@ -36,11 +36,10 @@ target 'Runner' do
   end
 end
 
-target 'DashMediaService' do
-  use_frameworks!
-  platform :ios, '15.0'
-  pod 'Firebase/Messaging', '12.15.0'
-end
+# DashMediaService (NSE) links FirebaseMessaging via Swift Package Manager
+# (see project.pbxproj XCRemoteSwiftPackageReference "firebase-ios-sdk"),
+# so no CocoaPods target is declared for it. Having Firebase in both
+# CocoaPods and SwiftPM would cause "Redefinition of module 'Firebase'".
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
