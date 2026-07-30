@@ -37,15 +37,17 @@ class RoostPortal extends StatefulWidget {
 }
 
 class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
+  static const List<int> _rotationReflowDelaysMs = <int>[45, 165, 330, 570, 860];
+
   late final WebViewController _controller;
-  StreamSubscription<List<ConnectivityResult>>? _networkSubscription;
+  StreamSubscription<List<ConnectivityResult>>? _pipeSubscription;
   bool _viewportReady = false;
   bool _coldReloadIssued = false;
   bool _offlineShown = false;
   int _redirectAttempts = 0;
   String? _lastMainUrl;
-  Timer? _metricsDebounce;
-  Size? _lastMetricsSize;
+  Timer? _viewportSettleTimer;
+  Size? _previousMetricsSize;
 
   @override
   void initState() {
@@ -59,41 +61,10 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
       DeviceOrientation.landscapeRight,
     ]);
 
-    final params = Platform.isIOS
-        ? WebKitWebViewControllerCreationParams(
-            allowsInlineMediaPlayback: true,
-            mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
-          )
-        : const PlatformWebViewControllerCreationParams();
-    _controller =
-        WebViewController.fromPlatformCreationParams(
-            params,
-            onPermissionRequest: (request) => request.grant(),
-          )
-          ..setJavaScriptMode(JavaScriptMode.unrestricted)
-          ..setBackgroundColor(Colors.black)
-          ..setUserAgent(widget.agent.userAgent)
-          ..enableZoom(false)
-          ..setNavigationDelegate(_navigation());
-    if (_controller.platform is WebKitWebViewController) {
-      (_controller.platform as WebKitWebViewController)
-          .setAllowsBackForwardNavigationGestures(true);
-    }
+    _controller = _forgeController();
 
-    widget.notifications.onDestination = (url) {
-      final uri = Uri.tryParse(url);
-      if (mounted && uri != null && uri.hasScheme) {
-        _controller.loadRequest(uri);
-      }
-    };
-    _networkSubscription = widget.probe.changes.listen((states) {
-      if (states.every((state) => state == ConnectivityResult.none)) {
-        // Connectivity is definitively gone — show offline immediately,
-        // no DNS probe (a probe hangs for seconds while offline and lets
-        // the WebView render its built-in error page first).
-        _goOffline();
-      }
-    });
+    widget.notifications.onDestination = _routeIncomingUrl;
+    _pipeSubscription = widget.probe.changes.listen(_onConnectivityChanged);
 
     if (widget.coldLaunch) {
       _settleColdViewport();
@@ -102,6 +73,50 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
       _controller.loadRequest(Uri.parse(widget.url));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _consumePending());
+  }
+
+  WebViewController _forgeController() {
+    final PlatformWebViewControllerCreationParams params = Platform.isIOS
+        ? WebKitWebViewControllerCreationParams(
+            allowsInlineMediaPlayback: true,
+            mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+          )
+        : const PlatformWebViewControllerCreationParams();
+    final controller = WebViewController.fromPlatformCreationParams(
+      params,
+      onPermissionRequest: (request) => request.grant(),
+    );
+    controller
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.black)
+      ..setUserAgent(widget.agent.userAgent)
+      ..enableZoom(false)
+      ..setNavigationDelegate(_navigation());
+    final platform = controller.platform;
+    if (platform is WebKitWebViewController) {
+      platform.setAllowsBackForwardNavigationGestures(true);
+    }
+    return controller;
+  }
+
+  void _routeIncomingUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (!mounted || uri == null || !uri.hasScheme) return;
+    _controller.loadRequest(uri);
+  }
+
+  void _onConnectivityChanged(List<ConnectivityResult> states) {
+    // Connectivity is definitively gone → show offline immediately, no DNS
+    // probe (a probe hangs for seconds while offline and lets WKWebView
+    // render its built-in error page first).
+    var allNone = true;
+    for (final state in states) {
+      if (state != ConnectivityResult.none) {
+        allNone = false;
+        break;
+      }
+    }
+    if (allNone) _goOffline();
   }
 
   void _enterImmersive() {
@@ -131,22 +146,25 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
     // so the site reflows cleanly instead of jittering.
     final view = View.of(context);
     final size = view.physicalSize;
-    final rotated = _lastMetricsSize != null &&
-        ((_lastMetricsSize!.width < _lastMetricsSize!.height) !=
-            (size.width < size.height));
-    _lastMetricsSize = size;
-    if (!rotated) return;
+    final prev = _previousMetricsSize;
+    _previousMetricsSize = size;
+    if (prev == null) return;
+    final wasPortrait = prev.width < prev.height;
+    final isPortrait = size.width < size.height;
+    if (wasPortrait == isPortrait) return;
     _enterImmersive();
     // WKWebView keeps the pre-rotation viewport width for a few hundred ms,
     // so the site renders at the wrong width right after the flip. Kick a
     // resize/orientationchange several times as the native frame settles so
     // the page reflows to the new width quickly instead of after ~1s.
-    _metricsDebounce?.cancel();
-    _pokeReflow(const [40, 160, 320, 560, 850]);
+    _viewportSettleTimer?.cancel();
+    _pokeReflow(_rotationReflowDelaysMs);
   }
 
   void _pokeReflow(List<int> delaysMs) {
-    for (final ms in delaysMs) {
+    var i = 0;
+    while (i < delaysMs.length) {
+      final ms = delaysMs[i];
       Timer(Duration(milliseconds: ms), () {
         if (!mounted) return;
         _controller.runJavaScript(
@@ -156,9 +174,10 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
           '  window.visualViewport.dispatchEvent(new Event("resize"));',
         ).catchError((_) {});
       });
+      i++;
     }
     // Re-assert viewport lock once things have settled.
-    _metricsDebounce = Timer(const Duration(milliseconds: 320), () {
+    _viewportSettleTimer = Timer(const Duration(milliseconds: 320), () {
       if (!mounted) return;
       _installInsetGuard();
       _installZoomLock();
@@ -208,51 +227,49 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
           }
         });
       },
-      onWebResourceError: (error) {
-        // -999 = cancelled (a new navigation superseded this one).
-        if (error.errorCode == -999) return;
-        // WKWebView sometimes reports isForMainFrame as null for the main
-        // navigation — treat null as main-frame so a real load failure is
-        // never silently swallowed (that was leaving the app "frozen").
-        final mainFrame = error.isForMainFrame ?? true;
-        final lower = error.description.toLowerCase();
-        final redirectLoop =
-            error.errorCode == -1007 ||
-            lower.contains('too_many_redirects') ||
-            lower.contains('too many redirects');
-        if (redirectLoop && _lastMainUrl != null && _redirectAttempts < 3) {
-          _redirectAttempts++;
-          _controller.loadRequest(Uri.parse(_lastMainUrl!));
-          return;
-        }
-        if (!mainFrame) return;
-        // Codes that mean the network is unreachable → confirm with a probe.
-        _showOfflineAfterProbe();
-      },
-      onNavigationRequest: (request) {
-        final uri = Uri.tryParse(request.url);
-        if (uri == null) return NavigationDecision.prevent;
-        if (<String>{
-          'http',
-          'https',
-          'about',
-          'data',
-          'blob',
-        }.contains(uri.scheme)) {
-          if (request.isMainFrame) _lastMainUrl = request.url;
-          return NavigationDecision.navigate;
-        }
-        launchUrl(uri, mode: LaunchMode.externalApplication);
-        return NavigationDecision.prevent;
-      },
+      onWebResourceError: _translateResourceError,
+      onNavigationRequest: _decideNavigation,
     );
+  }
+
+  void _translateResourceError(WebResourceError error) {
+    // -999 = cancelled (a new navigation superseded this one).
+    if (error.errorCode == -999) return;
+    // WKWebView sometimes reports isForMainFrame as null for the main
+    // navigation — treat null as main-frame so a real load failure is
+    // never silently swallowed (that was leaving the app "frozen").
+    final mainFrame = error.isForMainFrame ?? true;
+    final lower = error.description.toLowerCase();
+    final redirectLoop = error.errorCode == -1007 ||
+        lower.contains('too_many_redirects') ||
+        lower.contains('too many redirects');
+    if (redirectLoop && _lastMainUrl != null && _redirectAttempts < 3) {
+      _redirectAttempts++;
+      _controller.loadRequest(Uri.parse(_lastMainUrl!));
+      return;
+    }
+    if (!mainFrame) return;
+    // Codes that mean the network is unreachable → confirm with a probe.
+    _showOfflineAfterProbe();
+  }
+
+  NavigationDecision _decideNavigation(NavigationRequest request) {
+    final uri = Uri.tryParse(request.url);
+    if (uri == null) return NavigationDecision.prevent;
+    const inAppSchemes = <String>{'http', 'https', 'about', 'data', 'blob'};
+    if (inAppSchemes.contains(uri.scheme)) {
+      if (request.isMainFrame) _lastMainUrl = request.url;
+      return NavigationDecision.navigate;
+    }
+    launchUrl(uri, mode: LaunchMode.externalApplication);
+    return NavigationDecision.prevent;
   }
 
   /// Confirms the outage with a reachability probe (used for WebView load
   /// errors, which can be transient) before routing to the offline screen.
   Future<void> _showOfflineAfterProbe() async {
     if (_offlineShown) return;
-    bool online = true;
+    var online = true;
     try {
       online = await widget.probe.canReachNetwork();
     } catch (_) {
@@ -292,70 +309,73 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
 
   void _installInsetGuard() {
     _controller.runJavaScript(r'''
-(() => {
-  const root = window;
-  if (root.__cedInsetKeeper) return;
-  root.__cedInsetKeeper = true;
-  const marker = 'ced-inset-sheet';
-  const rules = [
+(function(){
+  var W = window;
+  if (W.__dashYolkGuard) { return; }
+  W.__dashYolkGuard = 1;
+  var SHEET_ID = 'dash-yolk-slab';
+  var RULES = [
     ':root{',
-    '--safe-area-inset-top:0px!important;',
-    '--safe-area-inset-right:0px!important;',
-    '--safe-area-inset-bottom:0px!important;',
-    '--safe-area-inset-left:0px!important;',
-    '--sat:0px!important;--sar:0px!important;',
-    '--sab:0px!important;--sal:0px!important;',
-    '--safe-top:0px!important;--safe-right:0px!important;',
-    '--safe-bottom:0px!important;--safe-left:0px!important;',
+      '--safe-area-inset-top:0px!important;',
+      '--safe-area-inset-right:0px!important;',
+      '--safe-area-inset-bottom:0px!important;',
+      '--safe-area-inset-left:0px!important;',
+      '--sat:0px!important;--sar:0px!important;',
+      '--sab:0px!important;--sal:0px!important;',
+      '--safe-top:0px!important;--safe-right:0px!important;',
+      '--safe-bottom:0px!important;--safe-left:0px!important;',
     '}',
-    // Lock the document edges: no rubber-band overscroll that would
-    // reveal the black scaffold above/below the site. Makes the page
-    // feel static like a native app. Does not touch the site's layout.
-    'html,body{overscroll-behavior:none!important;',
-    'overscroll-behavior-y:none!important;}'
+    'html,body{',
+      'overscroll-behavior:none!important;',
+      'overscroll-behavior-y:none!important;',
+    '}'
   ].join('');
-  const keyboardVisible = () => {
-    const visual = root.visualViewport;
-    return !!visual && visual.height < root.innerHeight * 0.75;
-  };
-  const refresh = () => {
-    if (keyboardVisible()) return;
-    const host = document.head || document.documentElement;
-    if (!host) return;
-    let viewport = document.querySelector('meta[name="viewport"]');
-    if (!viewport) {
-      viewport = document.createElement('meta');
-      viewport.name = 'viewport';
-      viewport.content = 'width=device-width, initial-scale=1, viewport-fit=contain';
-      host.appendChild(viewport);
+  function kbUp(){
+    var vv = W.visualViewport;
+    if (!vv) { return false; }
+    return vv.height < (W.innerHeight * 0.75);
+  }
+  function paint(){
+    if (kbUp()) { return; }
+    var head = document.head || document.documentElement;
+    if (!head) { return; }
+    var meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'viewport';
+      meta.content = 'width=device-width, initial-scale=1, viewport-fit=contain';
+      head.appendChild(meta);
     } else {
-      const clean = (viewport.content || '')
+      var clean = ('' + (meta.content || ''))
         .replace(/,?\s*viewport-fit\s*=\s*\w+/ig, '').trim();
-      viewport.content = `${clean}${clean ? ', ' : ''}viewport-fit=contain`;
+      meta.content = clean + (clean ? ', ' : '') + 'viewport-fit=contain';
     }
-    let sheet = document.getElementById(marker);
-    if (!sheet) {
-      sheet = document.createElement('style');
-      sheet.id = marker;
-      host.appendChild(sheet);
+    var css = document.getElementById(SHEET_ID);
+    if (!css) {
+      css = document.createElement('style');
+      css.id = SHEET_ID;
+      head.appendChild(css);
     }
-    sheet.textContent = rules;
-  };
-  const schedule = () => {
-    root.setTimeout(refresh, 170);
-    root.setTimeout(refresh, 640);
-  };
-  ['pushState', 'replaceState'].forEach((name) => {
-    const original = history[name];
-    history[name] = function(...args) {
-      const result = original.apply(this, args);
-      schedule();
-      return result;
-    };
-  });
-  root.addEventListener('popstate', schedule);
-  refresh();
-  root.setInterval(refresh, 2900);
+    css.textContent = RULES;
+  }
+  function ping(){
+    W.setTimeout(paint, 180);
+    W.setTimeout(paint, 620);
+  }
+  var patch = ['pushState', 'replaceState'];
+  for (var i = 0; i < patch.length; i++) {
+    (function(name){
+      var orig = history[name];
+      history[name] = function(){
+        var r = orig.apply(this, arguments);
+        ping();
+        return r;
+      };
+    })(patch[i]);
+  }
+  W.addEventListener('popstate', ping);
+  paint();
+  W.setInterval(paint, 3100);
 })();
 ''');
   }
@@ -365,44 +385,49 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
   /// viewport on SPA navigations.
   void _installZoomLock() {
     _controller.runJavaScript(r'''
-(() => {
-  if (window.__cedZoomLock) return;
-  window.__cedZoomLock = true;
-  const lockViewport = () => {
-    const host = document.head || document.documentElement;
-    if (!host) return;
-    let vp = document.querySelector('meta[name="viewport"]');
-    if (!vp) {
-      vp = document.createElement('meta');
-      vp.setAttribute('name', 'viewport');
-      host.appendChild(vp);
+(function(){
+  if (window.__dashClampScale) { return; }
+  window.__dashClampScale = true;
+  var VIEWPORT = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, '
+    + 'minimum-scale=1.0, user-scalable=no, viewport-fit=contain';
+  function pinViewport(){
+    var head = document.head || document.documentElement;
+    if (!head) { return; }
+    var meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'viewport');
+      head.appendChild(meta);
     }
-    vp.setAttribute('content',
-      'width=device-width, initial-scale=1.0, maximum-scale=1.0, ' +
-      'minimum-scale=1.0, user-scalable=no, viewport-fit=contain');
-  };
-  lockViewport();
-  const stop = (e) => { e.preventDefault(); };
-  ['gesturestart', 'gesturechange', 'gestureend'].forEach((t) =>
-    document.addEventListener(t, stop, {passive: false}));
-  document.addEventListener('touchmove', (e) => {
-    if (e.scale !== undefined && e.scale !== 1) e.preventDefault();
+    meta.setAttribute('content', VIEWPORT);
+  }
+  pinViewport();
+  function block(ev){ ev.preventDefault(); }
+  var gestures = ['gesturestart', 'gesturechange', 'gestureend'];
+  for (var g = 0; g < gestures.length; g++) {
+    document.addEventListener(gestures[g], block, {passive: false});
+  }
+  document.addEventListener('touchmove', function(ev){
+    if (ev.scale !== undefined && ev.scale !== 1) { ev.preventDefault(); }
   }, {passive: false});
-  let lastTap = 0;
-  document.addEventListener('touchend', (e) => {
-    const now = Date.now();
-    if (now - lastTap <= 300) e.preventDefault();
-    lastTap = now;
+  var lastTapAt = 0;
+  document.addEventListener('touchend', function(ev){
+    var now = Date.now();
+    if ((now - lastTapAt) <= 300) { ev.preventDefault(); }
+    lastTapAt = now;
   }, {passive: false});
-  ['pushState', 'replaceState'].forEach((name) => {
-    const original = history[name];
-    history[name] = function(...args) {
-      const result = original.apply(this, args);
-      setTimeout(lockViewport, 150);
-      return result;
-    };
-  });
-  window.addEventListener('popstate', () => setTimeout(lockViewport, 150));
+  var patch = ['pushState', 'replaceState'];
+  for (var i = 0; i < patch.length; i++) {
+    (function(name){
+      var orig = history[name];
+      history[name] = function(){
+        var r = orig.apply(this, arguments);
+        setTimeout(pinViewport, 170);
+        return r;
+      };
+    })(patch[i]);
+  }
+  window.addEventListener('popstate', function(){ setTimeout(pinViewport, 170); });
 })();
 ''');
   }
@@ -412,35 +437,42 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
   /// tapping elements feels native. Inputs stay selectable.
   void _installTapPolish() {
     _controller.runJavaScript(r'''
-(() => {
-  if (window.__cedTapPolish) return;
-  window.__cedTapPolish = true;
-  const style = document.createElement('style');
-  style.id = 'ced-tap-polish';
-  style.textContent =
-    '*{-webkit-tap-highlight-color:transparent!important;}' +
-    '*:not(input):not(textarea):not([contenteditable="true"]){' +
-      '-webkit-touch-callout:none!important;}';
-  (document.head || document.documentElement).appendChild(style);
+(function(){
+  if (window.__dashRippleMute) { return; }
+  window.__dashRippleMute = 1;
+  var css = document.createElement('style');
+  css.id = 'dash-tap-slab';
+  var lines = [
+    '*{-webkit-tap-highlight-color:transparent!important;}',
+    '*:not(input):not(textarea):not([contenteditable="true"]){',
+      '-webkit-touch-callout:none!important;',
+    '}'
+  ];
+  css.textContent = lines.join('');
+  (document.head || document.documentElement).appendChild(css);
 })();
 ''');
   }
 
   void _installKeyboardLift() {
     _controller.runJavaScript(r'''
-(() => {
-  if (window.__cedInputLift) return;
-  window.__cedInputLift = true;
-  const editable = (node) => !!node && (
-    node.matches?.('input, textarea, select, [contenteditable="true"]')
-  );
-  const reveal = () => {
-    const active = document.activeElement;
-    if (!editable(active)) return;
-    active.scrollIntoView({behavior: 'auto', block: 'nearest'});
-  };
-  document.addEventListener('focusin', (event) => {
-    if (editable(event.target)) window.setTimeout(reveal, 350);
+(function(){
+  if (window.__dashLiftCaret) { return; }
+  window.__dashLiftCaret = 1;
+  var SEL = 'input, textarea, select, [contenteditable="true"]';
+  function editable(node){
+    if (!node || !node.matches) { return false; }
+    try { return node.matches(SEL); } catch (e) { return false; }
+  }
+  function bringIntoView(){
+    var el = document.activeElement;
+    if (!editable(el)) { return; }
+    el.scrollIntoView({behavior: 'auto', block: 'nearest'});
+  }
+  document.addEventListener('focusin', function(ev){
+    if (editable(ev.target)) {
+      window.setTimeout(bringIntoView, 360);
+    }
   }, true);
 })();
 ''');
@@ -449,40 +481,47 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
   void _installFocusScaleGuard() {
     if (!Platform.isIOS) return;
     _controller.runJavaScript(r'''
-(() => {
-  if (window.__cedFocusScale) return;
-  window.__cedFocusScale = true;
-  const style = document.createElement('style');
-  style.textContent =
-    'input,textarea,select,[contenteditable="true"]{' +
-    'font-size:max(16px,1em)!important;}';
-  (document.head || document.documentElement).appendChild(style);
+(function(){
+  if (window.__dashLegibleForms) { return; }
+  window.__dashLegibleForms = 1;
+  var css = document.createElement('style');
+  css.textContent = 'input,textarea,select,[contenteditable="true"]{'
+    + 'font-size:max(16px,1em)!important;}';
+  (document.head || document.documentElement).appendChild(css);
 })();
 ''');
   }
 
   void _installInlinePlayback() {
     _controller.runJavaScript(r'''
-(() => {
-  if (window.__cedInlineMedia) return;
-  window.__cedInlineMedia = true;
-  const awaken = (video) => {
-    if (!(video instanceof HTMLVideoElement)) return;
+(function(){
+  if (window.__dashRestVideo) { return; }
+  window.__dashRestVideo = 1;
+  function warm(video){
+    if (!(video instanceof HTMLVideoElement)) { return; }
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
     video.playsInline = true;
     video.autoplay = true;
-    const attempt = video.play();
-    if (attempt?.catch) attempt.catch(() => {});
-  };
-  const scan = (node) => {
-    if (node instanceof HTMLVideoElement) awaken(node);
-    node.querySelectorAll?.('video').forEach(awaken);
-  };
-  scan(document);
-  new MutationObserver((records) => {
-    records.forEach((record) => record.addedNodes.forEach(scan));
-  }).observe(document.documentElement, {childList: true, subtree: true});
+    var p = null;
+    try { p = video.play(); } catch (e) {}
+    if (p && p.catch) { p.catch(function(){}); }
+  }
+  function walk(node){
+    if (node instanceof HTMLVideoElement) { warm(node); }
+    if (node.querySelectorAll) {
+      var list = node.querySelectorAll('video');
+      for (var i = 0; i < list.length; i++) { warm(list[i]); }
+    }
+  }
+  walk(document);
+  var mo = new MutationObserver(function(records){
+    for (var r = 0; r < records.length; r++) {
+      var added = records[r].addedNodes;
+      for (var a = 0; a < added.length; a++) { walk(added[a]); }
+    }
+  });
+  mo.observe(document.documentElement, {childList: true, subtree: true});
 })();
 ''');
   }
@@ -490,8 +529,8 @@ class _RoostPortalState extends State<RoostPortal> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _metricsDebounce?.cancel();
-    _networkSubscription?.cancel();
+    _viewportSettleTimer?.cancel();
+    _pipeSubscription?.cancel();
     widget.notifications.onDestination = null;
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.manual,

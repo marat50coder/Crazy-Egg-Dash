@@ -4,13 +4,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/hatch_models.dart';
 
 class NestVault {
-  static const String _routeKey = 'ced.roost.route';
-  static const String _expiryKey = 'ced.roost.expiry';
-  static const String _inviteKey = 'ced.roost.invite.after';
-  static const String _permissionKey = 'ced.roost.push.allowed';
-  static const String _osDeniedKey = 'ced.roost.push.os_denied';
-  static const String _savedUrlKey = 'ced.roost.secure.destination';
-  static const String _pendingUrlKey = 'ced.roost.secure.pending';
+  NestVault();
+
+  static const String _routeSlot = 'dash.nest.route';
+  static const String _expirySlot = 'dash.nest.expiry';
+  static const String _inviteAfterSlot = 'dash.nest.invite.after';
+  static const String _pushGrantSlot = 'dash.nest.push.granted';
+  static const String _pushOsDeniedSlot = 'dash.nest.push.os_denied';
+  static const String _savedUrlSlot = 'dash.nest.secure.destination';
+  static const String _pendingUrlSlot = 'dash.nest.secure.pending';
 
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
   late SharedPreferences _preferences;
@@ -19,14 +21,14 @@ class NestVault {
     _preferences = await SharedPreferences.getInstance();
   }
 
-  NestRoute get route => NestRoute.parse(_preferences.getString(_routeKey));
+  NestRoute get route => NestRoute.parse(_preferences.getString(_routeSlot));
 
   Future<void> saveRoute(NestRoute route) =>
-      _preferences.setString(_routeKey, route.storageValue);
+      _preferences.setString(_routeSlot, route.storageValue);
 
   Future<String?> savedUrl() async {
     try {
-      return await _secure.read(key: _savedUrlKey);
+      return await _secure.read(key: _savedUrlSlot);
     } catch (_) {
       return null;
     }
@@ -34,51 +36,55 @@ class NestVault {
 
   Future<void> cacheUrl(String url, int? expiresAt) async {
     try {
-      await _secure.write(key: _savedUrlKey, value: url);
+      await _secure.write(key: _savedUrlSlot, value: url);
       if (expiresAt != null) {
-        await _preferences.setInt(_expiryKey, expiresAt);
+        await _preferences.setInt(_expirySlot, expiresAt);
       }
     } catch (_) {}
   }
 
   bool get cachedUrlExpired {
-    final expiry = _preferences.getInt(_expiryKey);
-    return expiry == null ||
-        DateTime.now().millisecondsSinceEpoch ~/ 1000 >= expiry;
+    final expiry = _preferences.getInt(_expirySlot);
+    if (expiry == null) return true;
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return nowSeconds >= expiry;
   }
 
   Future<void> stashPushUrl(String url) async {
-    if (url.trim().isEmpty) return;
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return;
     try {
-      await _secure.write(key: _pendingUrlKey, value: url.trim());
+      await _secure.write(key: _pendingUrlSlot, value: trimmed);
     } catch (_) {}
   }
 
   Future<String?> consumePushUrl() async {
     try {
-      final value = await _secure.read(key: _pendingUrlKey);
-      if (value != null) await _secure.delete(key: _pendingUrlKey);
+      final value = await _secure.read(key: _pendingUrlSlot);
+      if (value != null) await _secure.delete(key: _pendingUrlSlot);
       return value;
     } catch (_) {
       return null;
     }
   }
 
-  bool get pushAllowed => _preferences.getBool(_permissionKey) ?? false;
-  bool get pushDeniedByOs => _preferences.getBool(_osDeniedKey) ?? false;
+  bool get pushAllowed => _preferences.getBool(_pushGrantSlot) ?? false;
+  bool get pushDeniedByOs => _preferences.getBool(_pushOsDeniedSlot) ?? false;
 
   Future<void> setPushAllowed(bool value) =>
-      _preferences.setBool(_permissionKey, value);
+      _preferences.setBool(_pushGrantSlot, value);
 
-  Future<void> markPushDeniedByOs() => _preferences.setBool(_osDeniedKey, true);
+  Future<void> markPushDeniedByOs() =>
+      _preferences.setBool(_pushOsDeniedSlot, true);
 
   bool get shouldShowPushInvite {
     if (pushAllowed || pushDeniedByOs) return false;
-    final after = _preferences.getInt(_inviteKey);
-    return after == null ||
-        DateTime.now().millisecondsSinceEpoch ~/ 1000 >= after;
+    final after = _preferences.getInt(_inviteAfterSlot);
+    if (after == null) return true;
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return nowSeconds >= after;
   }
 
   Future<void> snoozePushInvite(int epochSeconds) =>
-      _preferences.setInt(_inviteKey, epochSeconds);
+      _preferences.setInt(_inviteAfterSlot, epochSeconds);
 }

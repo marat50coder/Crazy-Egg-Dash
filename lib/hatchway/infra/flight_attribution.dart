@@ -10,9 +10,9 @@ import 'package:flutter/widgets.dart';
 import '../config/era_hatch_config.dart';
 import 'roost_agent.dart';
 
-void cedTrace(String Function() message) {
+void dashTrace(String Function() build) {
   assert(() {
-    debugPrint(message());
+    debugPrint(build());
     return true;
   }());
 }
@@ -60,7 +60,7 @@ class FlightAttribution {
         registerOnDeepLinkingCallback: true,
       );
     } catch (error) {
-      cedTrace(() => '[CED.FLIGHT] initialization failed: $error');
+      dashTrace(() => '[DASH.WING] initialization failed: $error');
       _completeEmpty();
     }
   }
@@ -83,8 +83,8 @@ class FlightAttribution {
       // *.appsflyersdk.com). Never merge that error map into the payload.
       final failed = status == 'failure' ||
           (received['af_status'] == null && received.containsKey('status'));
-      cedTrace(
-        () => '[CED.FLIGHT] conversion status=$status '
+      dashTrace(
+        () => '[DASH.WING] conversion status=$status '
             'af_status=${received['af_status']} keys=${received.keys.toList()}',
       );
       if (failed) {
@@ -98,7 +98,7 @@ class FlightAttribution {
         _install = received;
       }
     } catch (error) {
-      cedTrace(() => '[CED.FLIGHT] conversion parse error: $error');
+      dashTrace(() => '[DASH.WING] conversion parse error: $error');
       _install = <String, dynamic>{};
     } finally {
       if (!_installReady.isCompleted) _installReady.complete();
@@ -195,7 +195,7 @@ class FlightAttribution {
         }
       } catch (_) {}
     }
-    cedTrace(() => '[CED.FLIGHT] payload ${jsonEncode(body)}');
+    dashTrace(() => '[DASH.WING] payload ${jsonEncode(body)}');
     return body;
   }
 

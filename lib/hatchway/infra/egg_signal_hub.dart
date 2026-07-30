@@ -5,7 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'nest_vault.dart';
 
 @pragma('vm:entry-point')
-Future<void> cedBackgroundMessage(RemoteMessage _) async {}
+Future<void> dashBackgroundRelay(RemoteMessage _) async {}
 
 class EggSignalHub {
   EggSignalHub(this._vault, {required this.enabled});
@@ -35,7 +35,7 @@ class EggSignalHub {
     final initialUrl = initial == null ? null : _extract(initial.data);
     if (initialUrl != null) await _vault.stashPushUrl(initialUrl);
 
-    FirebaseMessaging.onBackgroundMessage(cedBackgroundMessage);
+    FirebaseMessaging.onBackgroundMessage(dashBackgroundRelay);
     await messaging.setForegroundNotificationPresentationOptions(
       alert: true,
       badge: true,

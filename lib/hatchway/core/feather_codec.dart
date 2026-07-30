@@ -1,52 +1,59 @@
 import 'dart:typed_data';
 
-const List<int> _nestSalt = <int>[
-  0x63,
-  0x45,
-  0x64,
-  0x23,
-  0x72,
-  0x75,
-  0x73,
-  0x68,
-  0x2A,
-  0x32,
-  0x36,
-  0x2E,
-  0x6B,
+// ═══════════════════════════════════════════════════════════════════════
+// Eggshell obfuscator — FNV-1a seeded LCG keystream + XOR + positional
+// mask. Distinct family from any KSA/PRGA-based sibling app.
+// If you touch _shardPepper OR any step below, mirror the change in
+// tool/encode_era_values.dart and regenerate ALL byte arrays in
+// hatchway/config/era_hatch_config.dart.
+// ═══════════════════════════════════════════════════════════════════════
+
+const List<int> _shardPepper = <int>[
+  0x9C, 0x51, 0x2D, 0x84, 0x37, 0xE2, 0x6F, 0x0B, 0xA6, 0x71, 0x18, 0xCD, 0x5A,
+  0xF3, 0x22,
 ];
 
-Uint8List _buildFeatherStream(int length) {
-  final state = List<int>.generate(256, (index) => index);
-  var cursor = 0;
-  for (var index = 0; index < state.length; index++) {
-    cursor =
-        (cursor + state[index] + _nestSalt[index % _nestSalt.length]) & 0xff;
-    final swap = state[index];
-    state[index] = state[cursor];
-    state[cursor] = swap;
-  }
+const int _fnvPrime = 0x01000193;
+const int _fnvOffset = 0x811C9DC5;
+const int _lcgMul = 1664525;
+const int _lcgAdd = 1013904223;
 
-  final result = Uint8List(length);
-  var left = 0;
-  var right = 0;
-  for (var index = 0; index < length; index++) {
-    left = (left + 1) & 0xff;
-    right = (right + state[left] + index) & 0xff;
-    final swap = state[left];
-    state[left] = state[right];
-    state[right] = swap;
-    result[index] = state[(state[left] + state[right]) & 0xff];
+int _brewLcgSeed(int payloadSize) {
+  var acc = _fnvOffset;
+  for (var i = 0; i < _shardPepper.length; i++) {
+    acc = ((acc ^ _shardPepper[i]) * _fnvPrime) & 0xFFFFFFFF;
   }
-  return result;
+  acc = ((acc ^ (payloadSize & 0xFF)) * _fnvPrime) & 0xFFFFFFFF;
+  acc = ((acc ^ ((payloadSize >> 8) & 0xFF)) * _fnvPrime) & 0xFFFFFFFF;
+  acc = ((acc ^ ((payloadSize >> 16) & 0xFF)) * _fnvPrime) & 0xFFFFFFFF;
+  return acc;
 }
 
-String unfoldFeathers(List<int> encoded) {
-  if (encoded.isEmpty) return '';
-  final stream = _buildFeatherStream(encoded.length);
-  final plain = Uint8List(encoded.length);
-  for (var index = 0; index < encoded.length; index++) {
-    plain[index] = (encoded[index] - stream[index] - (index * 29)) & 0xff;
+Uint8List _drawShellKeystream(int size) {
+  var state = _brewLcgSeed(size);
+  final keystream = Uint8List(size);
+  var i = 0;
+  while (i < size) {
+    state = (state * _lcgMul + _lcgAdd) & 0xFFFFFFFF;
+    keystream[i] = (state >> 17) & 0xFF;
+    i++;
+  }
+  return keystream;
+}
+
+int _positionScramble(int index) {
+  final quad = (index * index) & 0xFF;
+  return (((index * 47) ^ 0xA5) + quad) & 0xFF;
+}
+
+String crackShell(List<int> encoded) {
+  final size = encoded.length;
+  if (size == 0) return '';
+  final keystream = _drawShellKeystream(size);
+  final plain = Uint8List(size);
+  for (var i = 0; i < size; i++) {
+    final subtracted = (encoded[i] - _positionScramble(i)) & 0xFF;
+    plain[i] = subtracted ^ keystream[i];
   }
   return String.fromCharCodes(plain);
 }

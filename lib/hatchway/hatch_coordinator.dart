@@ -52,7 +52,7 @@ class HatchCoordinator {
       assert(() {
         // ignore: avoid_print
         print(
-          '[CED.HATCH] gate disabled '
+          '[DASH.NEST] gate disabled '
           'runtime=$runtimeEnabled creds=${EraHatchConfig.grayCredentialsReady}',
         );
         return true;
@@ -63,7 +63,7 @@ class HatchCoordinator {
 
     assert(() {
       // ignore: avoid_print
-      print('[CED.HATCH] decide start route=${vault.route}');
+      print('[DASH.NEST] decide start route=${vault.route}');
       return true;
     }());
 
@@ -91,7 +91,7 @@ class HatchCoordinator {
     if (!await probe.hasInterface()) {
       assert(() {
         // ignore: avoid_print
-        print('[CED.HATCH] first: no interface → offline');
+        print('[DASH.NEST] first: no interface → offline');
         return true;
       }());
       return const OfflineNest(returnToNative: false);
@@ -103,7 +103,7 @@ class HatchCoordinator {
     if (!await probe.canReachNetwork()) {
       assert(() {
         // ignore: avoid_print
-        print('[CED.HATCH] first: DNS probe failed → offline');
+        print('[DASH.NEST] first: DNS probe failed → offline');
         return true;
       }());
       return const OfflineNest(returnToNative: false);
@@ -116,7 +116,7 @@ class HatchCoordinator {
     assert(() {
       // ignore: avoid_print
       print(
-        '[CED.HATCH] first: config hasDest=${reply.hasDestination} '
+        '[DASH.NEST] first: config hasDest=${reply.hasDestination} '
         'url=${reply.url}',
       );
       return true;

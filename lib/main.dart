@@ -43,7 +43,7 @@ Future<void> main() async {
 
   assert(() {
     debugPrint(
-      '[CED.BOOT] credentialsReady=${EraHatchConfig.grayCredentialsReady} '
+      '[DASH.BOOT] credentialsReady=${EraHatchConfig.grayCredentialsReady} '
       'endpoint=${EraHatchConfig.endpoint} '
       'afKeyLen=${EraHatchConfig.appsFlyerKey.length} '
       'fbNum=${EraHatchConfig.firebaseProjectNumber}',
@@ -57,12 +57,12 @@ Future<void> main() async {
       await Firebase.initializeApp();
       productionServicesReady = true;
       assert(() {
-        debugPrint('[CED.BOOT] Firebase.initializeApp OK');
+        debugPrint('[DASH.BOOT] Firebase.initializeApp OK');
         return true;
       }());
     } catch (error) {
       assert(() {
-        debugPrint('[CED.BOOT] Firebase.initializeApp failed: $error');
+        debugPrint('[DASH.BOOT] Firebase.initializeApp failed: $error');
         return true;
       }());
     }
@@ -76,7 +76,7 @@ Future<void> main() async {
       } catch (error) {
         // App Check must never block FCM / gray routing.
         assert(() {
-          debugPrint('[CED.BOOT] AppCheck skipped: $error');
+          debugPrint('[DASH.BOOT] AppCheck skipped: $error');
           return true;
         }());
       }
@@ -84,7 +84,7 @@ Future<void> main() async {
   } else {
     assert(() {
       debugPrint(
-        '[CED.BOOT] gray gate DISABLED — missing credentials. Game only.',
+        '[DASH.BOOT] gray gate DISABLED — missing credentials. Game only.',
       );
       return true;
     }());

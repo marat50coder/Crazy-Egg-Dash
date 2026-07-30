@@ -17,7 +17,7 @@ class HatchExchange {
       return HatchReply.rejected('credentials_unavailable');
     }
     try {
-      cedTrace(() => '[CED.EXCHANGE] request ${jsonEncode(payload)}');
+      dashTrace(() => '[DASH.YOLK] request ${jsonEncode(payload)}');
       final response = await _agent
           .post(
             Uri.parse(EraHatchConfig.endpoint),
@@ -28,8 +28,8 @@ class HatchExchange {
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 15));
-      cedTrace(
-        () => '[CED.EXCHANGE] response ${response.statusCode} ${response.body}',
+      dashTrace(
+        () => '[DASH.YOLK] response ${response.statusCode} ${response.body}',
       );
       if (response.statusCode != 200) {
         return HatchReply.rejected('http_${response.statusCode}');
@@ -42,7 +42,7 @@ class HatchExchange {
       }
       return reply;
     } catch (error) {
-      cedTrace(() => '[CED.EXCHANGE] failed: $error');
+      dashTrace(() => '[DASH.YOLK] failed: $error');
       return HatchReply.rejected('network_failure');
     }
   }

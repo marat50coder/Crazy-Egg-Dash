@@ -2,8 +2,16 @@ import Flutter
 import UIKit
 import UserNotifications
 
+/// Captures the deep-link URL from a cold-start notification tap and hands
+/// it to the Dart side over the shared_preferences NSUserDefaults surface.
+/// The Dart-visible key drops the "flutter." prefix.
 class SceneDelegate: FlutterSceneDelegate {
-  static let launchRouteKey = "flutter.ced_tap_route"
+  static let handoffKey = "flutter.dash_push_dest"
+
+  private static let candidateKeys = [
+    "deep_link", "target", "url", "deeplink", "link",
+  ]
+  private static let nestedContainers = ["payload", "data"]
 
   override func scene(
     _ scene: UIScene,
@@ -12,43 +20,43 @@ class SceneDelegate: FlutterSceneDelegate {
   ) {
     super.scene(scene, willConnectTo: session, options: connectionOptions)
 
-    guard
-      let response = connectionOptions.notificationResponse,
-      let destination = Self.destination(
-        inside: response.notification.request.content.userInfo
-      )
-    else { return }
+    guard let response = connectionOptions.notificationResponse else {
+      return
+    }
+    let payload = response.notification.request.content.userInfo
+    guard let destination = Self.resolveDestination(from: payload) else {
+      return
+    }
 
     let defaults = UserDefaults.standard
-    defaults.set(destination, forKey: Self.launchRouteKey)
+    defaults.set(destination, forKey: Self.handoffKey)
     defaults.synchronize()
 
     #if DEBUG
-    NSLog("[CED.ROUTE] captured notification destination")
+    NSLog("[DASH.ROUTE] captured notification destination")
     #endif
   }
 
-  private static func destination(
-    inside payload: [AnyHashable: Any]
+  private static func resolveDestination(
+    from payload: [AnyHashable: Any]
   ) -> String? {
-    let candidates = ["deep_link", "target", "url", "deeplink", "link"]
-
-    func firstValue(in dictionary: [AnyHashable: Any]) -> String? {
-      for candidate in candidates {
-        guard let value = dictionary[candidate] as? String else { continue }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return trimmed }
-      }
-      return nil
-    }
-
-    if let direct = firstValue(in: payload) { return direct }
-
-    for container in ["payload", "data"] {
+    if let hit = pickString(from: payload) { return hit }
+    for container in nestedContainers {
       if let nested = payload[container] as? [AnyHashable: Any],
-         let value = firstValue(in: nested) {
-        return value
+         let hit = pickString(from: nested) {
+        return hit
       }
+    }
+    return nil
+  }
+
+  private static func pickString(
+    from dictionary: [AnyHashable: Any]
+  ) -> String? {
+    for key in candidateKeys {
+      guard let raw = dictionary[key] as? String else { continue }
+      let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !trimmed.isEmpty { return trimmed }
     }
     return nil
   }

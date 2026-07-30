@@ -5,54 +5,70 @@ import 'package:http/http.dart' as http;
 
 import '../config/era_hatch_config.dart';
 
+/// HTTP client whose every request is stamped with a forged Mobile Safari
+/// User-Agent. The UA is derived from the real iOS release when possible
+/// so ten different installs never collide on the same string.
+///
+/// GAME THEME CATEGORY: crash (no appid/appname suffix).
 class RoostAgent extends http.BaseClient {
-  final http.Client _transport = http.Client();
-  String? _userAgent;
+  RoostAgent();
+
+  static const String _fallbackIos = '18.7.1';
+  static const int _minMajor = 18;
+  static const String _mobileToken = 'Mobile/15E148';
+
+  final http.Client _wire = http.Client();
+  String? _built;
 
   Future<void> prepare() async {
+    _built = await _resolveUa();
+  }
+
+  String get userAgent => _built ?? _forge(_fallbackIos);
+
+  Future<String> _resolveUa() async {
+    if (!Platform.isIOS) return _forge(_fallbackIos);
     try {
-      if (!Platform.isIOS) {
-        _userAgent = _fallback();
-        return;
-      }
       final info = await DeviceInfoPlugin().iosInfo;
-      final version = _normalizedIos(info.systemVersion);
-      _userAgent = _mobileSafari(version);
+      return _forge(_normalizeIos(info.systemVersion));
     } catch (_) {
-      _userAgent = _fallback();
+      return _forge(_fallbackIos);
     }
   }
 
-  String get userAgent => _userAgent ?? _fallback();
-
-  String _normalizedIos(String raw) {
-    final components = raw
-        .split('.')
-        .map((part) => int.tryParse(part))
-        .whereType<int>()
-        .take(3)
-        .toList();
-    if (components.isEmpty || components.first < 18) return '18.6';
-    return components.join('.');
+  String _normalizeIos(String raw) {
+    final digits = <int>[];
+    for (final chunk in raw.split('.')) {
+      final parsed = int.tryParse(chunk);
+      if (parsed != null) digits.add(parsed);
+      if (digits.length >= 3) break;
+    }
+    if (digits.isEmpty || digits.first < _minMajor) return _fallbackIos;
+    return digits.join('.');
   }
 
-  // GAME THEME CATEGORY: crash (no appid/appname suffix).
-  String _mobileSafari(String iosVersion) {
+  String _forge(String iosVersion) {
     final cpu = iosVersion.replaceAll('.', '_');
-    return 'Mozilla/5.0 (iPhone; CPU iPhone OS $cpu like Mac OS X) '
-        'AppleWebKit/${EraHatchConfig.webKitVersion} (KHTML, like Gecko) '
-        'Version/${EraHatchConfig.safariVersion} Mobile/15E148 '
-        'Safari/${EraHatchConfig.safariTail}';
+    final buffer = StringBuffer('Mozilla/5.0 ')
+      ..write('(iPhone; CPU iPhone OS ')
+      ..write(cpu)
+      ..write(' like Mac OS X) AppleWebKit/')
+      ..write(EraHatchConfig.webKitVersion)
+      ..write(' (KHTML, like Gecko) Version/')
+      ..write(EraHatchConfig.safariVersion)
+      ..write(' ')
+      ..write(_mobileToken)
+      ..write(' Safari/')
+      ..write(EraHatchConfig.safariTail);
+    return buffer.toString();
   }
-
-  String _fallback() => _mobileSafari('18.6');
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) {
     request.headers.putIfAbsent('User-Agent', () => userAgent);
-    return _transport.send(request);
+    return _wire.send(request);
   }
 
   @override
-  void close() => _transport.close();
+  void close() => _wire.close();
 }
